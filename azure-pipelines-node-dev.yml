@@ -1,0 +1,71 @@
+trigger:
+  - none
+
+resources:
+  repositories:
+    - repository: manifests
+      type: git
+      name: kustomize-template
+
+name: v$(Date:yyyMMdd)$(Rev:.r)
+
+variables:
+  APPLICATION_NAME: node-app # your application name
+  IMAGE_NAME: $(System.TeamProject)/$(APPLICATION_NAME)
+  REGISTRY_CONNECTION_NAME: terraform-demo-registry-connection # your registry service connection name
+
+stages:
+  - stage: application_build
+    displayName: Application Build
+    jobs:
+    - job:  build
+      displayName: Dockerizing and Tagging
+      pool:
+        vmImage: ubuntu-latest
+      steps:
+      - task: Docker@2
+        inputs:
+          command: buildAndPush
+          dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+          repository: $(IMAGE_NAME)
+          containerRegistry: $(REGISTRY_CONNECTION_NAME)
+          tags: |
+            $(Build.BuildNumber)
+            latest
+      - task: Bash@3
+        inputs:
+          targetType: 'inline'
+          script: |
+            git config --global user.email "azure.devops.pipelines@$(Build.DefinitionName)"
+            git config --global user.name "Azure DevOps Pipelines"
+            git tag -a $(Build.BuildNumber) -m "Container build from $(Build.SourceBranchName)"
+            git push --tags
+  - stage: application_deploy
+    displayName: Application Deploy
+    jobs:
+    - deployment: deploy
+      displayName: AKS Deploy
+      pool:
+        vmInage: ubuntu-latest
+      environment: 'Development.$(APPLICATION_NAME)'
+      variables:
+        KUSTOMIZATION_PATH: './$(APPLICATION_NAME)/dev'
+        REGISTRY_URI: orgdemokoceacr.azurecr.io # your azure container registry URI
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - checkout: manifests
+              path: manifests
+            - task: KubernetesManifest@0
+              name: bake
+              inputs:
+                action: bake
+                renderType: kustomize
+                kustomizationPath: $(KUSTOMIZATION_PATH)
+            - task: KubernetesManifest@0
+              inputs:
+                action: deploy
+                manifests: $(bake.manifestsBundle)
+                containers: |
+                  $(REGISTRY_URI)/$(IMAGE_NAME):$(Build.BuildNumber)
