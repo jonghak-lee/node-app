@@ -38,6 +38,7 @@ stages:
           script: |
             git config --global user.email "azure.devops.pipelines@$(Build.DefinitionName)"
             git config --global user.name "Azure DevOps Pipelines"
+            git checkout pipeline
             git tag -a $(Build.BuildNumber) -m "Container build from $(Build.SourceBranchName)"
             git push --tags
   - stage: application_deploy
