@@ -12,26 +12,42 @@ name: v$(Date:yyyMMdd)$(Rev:.r)
 variables:
   APPLICATION_NAME: node-app # your application name
   IMAGE_NAME: $(System.TeamProject)/$(APPLICATION_NAME)
-  REGISTRY_CONNECTION_NAME: terraform-demo-registry-connection # your registry service connection name
+  AZURE_CONNECTION_NAME: jhleedemo-azure-connection # your azure resource manager service connection name
 
 stages:
   - stage: application_build
     displayName: Application Build
     jobs:
-    - job:  build
+    - job: build
       displayName: Dockerizing and Tagging
       pool:
         vmImage: ubuntu-latest
+      variables:
+        REGISTRY_NAME: jhleedemo # your azure container registry name
+        ACR_TASK_NAME: node-app-container-build # your azure container registry task name
       steps:
-      - task: Docker@2
+      - task: AzureCLI@2
         inputs:
-          command: buildAndPush
-          dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
-          repository: $(IMAGE_NAME)
-          containerRegistry: $(REGISTRY_CONNECTION_NAME)
-          tags: |
-            $(Build.BuildNumber)
-            latest
+          azureSubscription: '$(AZURE_CONNECTION_NAME)'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: 'az acr task update -r $(REGISTRY_NAME) -n $(ACR_TASK_NAME) -t $(IMAGE_NAME):$(Build.BuildNumber)'
+      - task: AzureCLI@2
+        inputs:
+          azureSubscription: '$(AZURE_CONNECTION_NAME)'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: 'az acr task run -r $(REGISTRY_NAME) -n $(ACR_TASK_NAME)'
+      - checkout: self
+        persistCredentials: true
+      - task: Bash@3
+        inputs:
+          targetType: 'inline'
+          script: |
+            git config --global user.email "azure.devops.pipelines@$(Build.DefinitionName)"
+            git config --global user.name "Azure DevOps Pipelines"
+            git tag -a $(Build.BuildNumber) -m "Container build from $(Build.SourceBranchName)"
+            git push --tags
   - stage: application_deploy
     displayName: Application Deploy
     jobs:
