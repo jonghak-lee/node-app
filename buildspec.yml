@@ -1,0 +1,25 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto11
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 318374019075.dkr.ecr.ap-northeast-2.amazonaws.com
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t 318374019075.dkr.ecr.ap-northeast-2.amazonaws.com/apps/node-app:0.0.1-SNAPSHOT .
+  post_build:
+    commands:
+      - echo Pushing the Docker image...
+      - docker push 318374019075.dkr.ecr.ap-northeast-2.amazonaws.com/apps/node-app:0.0.1-SNAPSHOT
+      - echo Build completed on `date`
+
+cache:
+  paths:
+    - '/root/.m2/**/*'
